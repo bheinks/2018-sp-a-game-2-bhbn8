@@ -131,8 +131,6 @@ class AI(BaseAI):
         print('-'*24)
         print()
 
-        assert self.game.fen == board.board2fen()
-
         self.rerun = False
         return True
 

@@ -377,7 +377,6 @@ class Piece:
 
         return legal_moves
 
-    # TODO: implement en passant
     def _get_pawn_moves(self):
         legal_moves = []
         board = self.board
@@ -549,7 +548,6 @@ class Piece:
         # queen moves are just bishop + rook moves
         return self._get_bishop_moves() + self._get_rook_moves()
 
-    # TODO: implement castling
     def _get_king_moves(self):
         legal_moves = []
         
@@ -673,7 +671,7 @@ class Piece:
         if move.promotion:
             self.type = move.promotion
 
-        self.board.en_passant = move.en_passant or "-"
+        self.board.en_passant = move.en_passant or '-'
         self.board.castling = self.board.castling or '-'
         self.board.turn = self.enemy_color[0].lower()
 
@@ -691,7 +689,6 @@ class Player:
         self.pieces = board.pieces[color]
 
     def get_all_moves(self):
-        #return [m for m in p.get_moves() for p in self.pieces.values()]
         return [m for p in self.pieces.values() for m in p.get_moves()]
 
 
@@ -715,20 +712,3 @@ class Move:
 
     def __repr__(self):
         return str(self)
-
-#board = Board("rnbqkbnr/pppppppp/8/7P/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1")
-##board = Board("rnbqkbnr/pppppp1p/8/6p1/7P/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1")
-#board.print()
-#print(board.board2fen())
-#
-#pawn = board.get_piece(6, 1)
-#pawn.move(pawn.get_moves()[-1])
-#board.print()
-#print(board.board2fen())
-##print(board.get_piece(7, 3).get_moves())
-#pawn = board.get_piece(7, 3)
-#pawn.move(pawn.get_moves()[-1])
-##print(pawn.get_moves())
-#
-#board.print()
-#print(board.board2fen())
