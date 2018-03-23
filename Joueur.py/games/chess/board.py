@@ -1,4 +1,5 @@
 from string import ascii_lowercase
+from re import sub
 
 
 class Board:
@@ -35,7 +36,7 @@ class Board:
 
         # other FEN fields
         self.turn = fen[1]
-        self.castle = fen[2]
+        self.castling = fen[2]
         self.en_passant = fen[3]
         self.halfmove_clock = int(fen[4])
         self.fullmove_counter = int(fen[5])
@@ -72,9 +73,8 @@ class Board:
         self._board[piece.y][piece.x] = None
 
         # remove enemy piece if captured
-        enemy_piece = self.get_piece(x, y)
-        if enemy_piece:
-            self.remove_piece(x, y, enemy_piece)
+        if self.get_piece(x, y):
+            self.remove_piece(x, y)
 
         # update board to new piece position
         self._board[y][x] = piece
@@ -82,7 +82,7 @@ class Board:
         # update piece x and y values
         piece.x, piece.y = x, y
 
-    def remove_piece(self, x, y, piece):
+    def remove_piece(self, x, y):
         """Removes a piece from the board.
 
         Args:
@@ -91,11 +91,16 @@ class Board:
             piece: The piece that we're removing.
         """
 
-        # remove from board
-        self._board[piece.y][piece.x] = None
+        piece = self.get_piece(x, y)
 
         # remove from pieces
         del self.pieces[piece.color][piece.id]
+
+        # remove from board
+        self._board[y][x] = None
+
+        # reset the halfmove clock
+        self.halfmove_clock = 0
 
     def print(self):
         """Prints a board to the screen."""
@@ -126,43 +131,34 @@ class Board:
 
         board = []
         pieces = {"White": {}, "Black": {}}
-        fen = fen.split('/')
+        fen = Board._expand_fen(fen)
+        fen_split = fen.split('/')
+        default_split = Board._expand_fen(Board.DEFAULT_FEN.split()[0]).split('/')
 
         # unique piece ID
         id = 0
 
-        for y in range(len(fen)):
+        for y in range(len(fen_split)):
             rank = []
 
-            for piece in fen[y]:
-                # if digit, add that number in None objects to rank
-                if piece.isdigit():
-                    rank.extend([None for _ in range(int(piece))])
-                # otherwise, add new Piece object
+            for x in range(len(fen_split[y])):
+                piece = fen_split[y][x]
+                has_moved = False
+
+                if piece == '-':
+                    rank.append(None)
                 else:
-                    # if uppercase, piece is white
                     if piece.isupper():
                         color = "White"
                         enemy_color = "Black"
-
-                        # piece has moved if outside of starting rank
-                        if piece == "P":
-                            has_moved = y != 6
-                        else:
-                            has_moved = y != 7
-                    # black otherwise
                     else:
                         color = "Black"
                         enemy_color = "White"
 
-                        # piece has moved if outside of starting rank
-                        if piece == "P":
-                            has_moved = y != 1
-                        else:
-                            has_moved = y != 0
+                    if piece != default_split[y][x]:
+                        has_moved = True
 
-                    # create piece
-                    piece = Piece(self, id, len(rank), y,
+                    piece = Piece(self, id, x, y,
                         Board.FEN_PIECE_MAP[piece.lower()],
                         color, enemy_color, has_moved)
 
@@ -173,6 +169,10 @@ class Board:
             board.append(rank)
 
         return board, pieces
+
+    @staticmethod
+    def _expand_fen(fen):
+        return sub("(\d)", lambda m: '-'*int(m.group()), fen)
 
     def board2fen(self):
         """Converts a board instance to a FEN string.
@@ -206,7 +206,7 @@ class Board:
         return "{} {} {} {} {} {}".format(
             '/'.join(fen),
             self.turn,
-            self.castle,
+            self.castling,
             self.en_passant,
             self.halfmove_clock,
             self.fullmove_counter)
@@ -246,7 +246,7 @@ class Board:
             (int, int): The x and y coordinates respectively.
         """
 
-        return ord(file)-97, 8-rank
+        return ord(file)-97, 8-int(rank)
 
 
 class Piece:
@@ -569,7 +569,38 @@ class Piece:
                     except IndexError:
                         pass
 
+        # check castling
+        if not self.has_moved:
+            if self.color == "White":
+                # check white kingside castle
+                if 'K' in self.board.castling and self._check_castle(6, 7, 5, 1):
+                    legal_moves.append(Move(self, 6, self.y, castling=(7, 5)))
+                # check white queenside castle
+                if 'Q' in self.board.castling and self._check_castle(2, 0, 3, -1):
+                    legal_moves.append(Move(self, 2, self.y, castling=(0, 3)))
+            else:
+                # check black kingside castle
+                if 'k' in self.board.castling and self._check_castle(6, 7, 5, 1):
+                    legal_moves.append(Move(self, 6, self.y, castling=(7, 5)))
+                # check black queenside castle
+                if 'q' in self.board.castling and self._check_castle(2, 0, 3, -1):
+                    legal_moves.append(Move(self, 2, self.y, castling=(0, 3)))
+
         return legal_moves
+
+    def _check_castle(self, king_end_x, rook_start_x, rook_end_x, direction):
+        rook = self.board.get_piece(rook_start_x, self.y)
+
+        if rook and not rook.has_moved:
+            for x in range(self.x+direction, rook.x, direction):
+                if self.board.get_piece(x, self.y):
+                    return False
+            
+            return True
+        return False
+
+        # kingside ending rook x == ending king x-1
+        # queenside ending rook x == ending king x+1
 
     def in_check(self):
         # for every enemy piece
@@ -593,11 +624,48 @@ class Piece:
         return PIECE_MOVE_MAP[self.type]()
 
     def move(self, move):
-        if (move.piece.type == "Pawn" and self.board.en_passant == ''.join(
-                Board.coord2fr(move.x, move.y))):
-            x, y = Board.fr2coord(*list(self.en_passant))
-            self.board.remove_piece(x, y)
-            print("EN PASSANT")
+        if not self.has_moved:
+            if move.piece.type == "King":
+                # remove white castling permissions
+                if str(move.piece).isupper():
+                    self.board.castling = ''.join([c for c in self.board.castling if c.islower()])
+                # remove black castling permissions
+                else:
+                    self.board.castling = ''.join([c for c in self.board.castling if c.isupper()])
+                
+                # if the move was a castle
+                if move.castling:
+                    rook_start_x, rook_end_x = move.castling
+                    rook = self.board.get_piece(rook_start_x, move.y)
+
+                    # move rook
+                    self.board.set_piece(rook_end_x, move.y, rook)
+                    rook.has_moved = True
+
+            elif move.piece.type == "Rook":
+                if str(move.piece).isupper():
+                    if self.x == 0:
+                        # remove white queenside castling permission
+                        self.board.castling = self.board.castling.replace('Q', '')
+                    else:
+                        # remove white kingside castling permission
+                        self.board.castling = self.board.castling.replace('K', '')
+                else:
+                    if self.x == 0:
+                        # remove black queenside castling permission
+                        self.board.castling = self.board.castling.replace('q', '')
+                    else:
+                        # remove black kingside castling permission
+                        self.board.castling = self.board.castling.replace('k', '')
+
+        if move.piece.type == "Pawn":
+            if self.board.en_passant == ''.join(Board.coord2fr(move.x, move.y)):
+                x, y = Board.fr2coord(*list(self.board.en_passant))
+                self.board.remove_piece(x, y + (1 if self.color == "White" else -1))
+
+            self.board.halfmove_clock = 0
+        else:
+            self.board.halfmove_clock += 1
 
         self.board.set_piece(move.x, move.y, self)
         self.has_moved = True
@@ -606,6 +674,11 @@ class Piece:
             self.type = move.promotion
 
         self.board.en_passant = move.en_passant or "-"
+        self.board.castling = self.board.castling or '-'
+        self.board.turn = self.enemy_color[0].lower()
+
+        if move.piece.color == "Black":
+            self.board.fullmove_counter += 1
 
     def is_enemy(self, other):
         return self.color != other.color
@@ -623,12 +696,13 @@ class Player:
 
 
 class Move:
-    def __init__(self, piece, x, y, promotion="", en_passant=""):
+    def __init__(self, piece, x, y, promotion="", en_passant="", castling=()):
         self.piece = piece
         self.x = x
         self.y = y
         self.promotion = promotion
         self.en_passant = en_passant
+        self.castling = castling
 
     def __str__(self):
         file, rank = Board.coord2fr(self.x, self.y)
@@ -641,3 +715,20 @@ class Move:
 
     def __repr__(self):
         return str(self)
+
+#board = Board("rnbqkbnr/pppppppp/8/7P/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1")
+##board = Board("rnbqkbnr/pppppp1p/8/6p1/7P/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1")
+#board.print()
+#print(board.board2fen())
+#
+#pawn = board.get_piece(6, 1)
+#pawn.move(pawn.get_moves()[-1])
+#board.print()
+#print(board.board2fen())
+##print(board.get_piece(7, 3).get_moves())
+#pawn = board.get_piece(7, 3)
+#pawn.move(pawn.get_moves()[-1])
+##print(pawn.get_moves())
+#
+#board.print()
+#print(board.board2fen())

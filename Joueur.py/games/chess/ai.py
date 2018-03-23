@@ -131,16 +131,20 @@ class AI(BaseAI):
         print('-'*24)
         print()
 
+        assert self.game.fen == board.board2fen()
+
         self.rerun = False
         return True
 
     def update_last_move(self):
-        move = self.game.moves[-1]
-        from_x, from_y = Board.fr2coord(move.from_file, move.from_rank)
-        to_x, to_y = Board.fr2coord(move.to_file, move.to_rank)
-        piece = self.board.get_piece(from_x, from_y)
+        #move = self.game.moves[-1]
+        #from_x, from_y = Board.fr2coord(move.from_file, move.from_rank)
+        #to_x, to_y = Board.fr2coord(move.to_file, move.to_rank)
+        #piece = self.board.get_piece(from_x, from_y)
 
-        piece.move(Move(piece, to_x, to_y, move.promotion))
+        #piece.move(Move(piece, to_x, to_y, move.promotion))
+        self.board = Board(self.game.fen)
+        self.local_player = Player(self.board, self.player.color)
 
     def print_current_board(self):
         """Prints the current board using pretty ASCII art
