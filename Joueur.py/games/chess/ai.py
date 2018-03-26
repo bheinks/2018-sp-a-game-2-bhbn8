@@ -5,7 +5,7 @@ from time import sleep
 
 # local imports
 from joueur.base_ai import BaseAI
-from games.chess.board import Board, Player, Move
+from games.chess.board import Board
 
 # <<-- Creer-Merge: imports -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
 # you can add additional import(s) here
@@ -32,11 +32,8 @@ class AI(BaseAI):
         # our local board representation
         self.board = Board(self.game.fen)
 
-        # our local player representation
-        self.local_player = Player(self.board, self.player.color)
-
-        # True when we ditch a new board state, False otherwise
-        self.rerun = False
+        # represents whether or not we want minimax to return high or low
+        self.color_code = 1 if self.player.color == "White" else -1
 
         # <<-- /Creer-Merge: start -->>
 
@@ -65,74 +62,112 @@ class AI(BaseAI):
         """
         # <<-- Creer-Merge: runTurn -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
 
-        # if we're not evaluating a new state, don't update local board again
-        if len(self.game.moves) > 0 and not self.rerun:
+        if len(self.game.moves) > 0:
             self.update_last_move()
 
-        # create new board state and player
-        new_board = Board(self.board.board2fen())
-        new_local_player = Player(new_board, self.player.color)
+        move = self.minimax_root(3, self.board, True)
+        piece = move.piece
+        promotion_type = move.promotion
+        old_coord = piece.x, piece.y
 
-        # select a random move from all possible moves
-        local_move = choice(new_local_player.get_all_moves())
+        print(f"Moving {piece} from {old_coord} to {move.x}, {move.y}")
 
-        return self.simulate_move(new_board, new_local_player, local_move)
+        move.piece.move(move)
+
+        for p in self.player.pieces:
+            if Board.fr2coord(p.file, p.rank) == old_coord:
+                p.move(*Board.coord2fr(move.x, move.y), promotion_type)
+                break
+
+        print("Local board:")
+        self.board.print()
+        print()
+        print("Remote board:")
+        self.print_current_board()
+        print(f"I am {self.player.color}")
+
+        return True
 
         # <<-- /Creer-Merge: runTurn -->>
 
     # <<-- Creer-Merge: functions -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
 
-    def simulate_move(self, board, local_player, local_move):
+    def simulate_move(self, board, local_move):
         piece = local_move.piece
-        promotion_type = local_move.promotion
-        x, y = local_move.x, local_move.y
+        #promotion_type = local_move.promotion
+        #x, y = local_move.x, local_move.y
 
-        possible_moves = piece.get_moves()
-        old_coord = piece.x, piece.y
-        old_type = piece.type
+        # cannot castle when in check
+        if piece.type == "King" and local_move.castling and piece.in_check():
+            return False
 
         piece.move(local_move)
 
         # discard state if we end up in check
-        for p in local_player.pieces.values():
-            if p.type == 'King' and p.in_check():
-                self.rerun = True
+        for p in board.get_pieces():
+            if p.type == "King" and p.in_check():
+                piece.undo()
                 return False
 
         # otherwise it's a valid move. find remote piece and move
-        for p in self.player.pieces:
-            if Board.fr2coord(p.file, p.rank) == old_coord:
-                p.move(*Board.coord2fr(x, y), promotion_type)
-                break
+        #for p in self.player.pieces:
+        #    if Board.fr2coord(p.file, p.rank) == old_coord:
+        #        p.move(*Board.coord2fr(x, y), promotion_type)
+        #        break
 
-        # update board state and player
-        self.board = board
-        self.local_player = local_player
+        #print("Remote board:")
+        #self.print_current_board()
+        #print()
+        #print("Board value: {}".format(self.board.value))
+        #print()
 
-        print("Available moves:")
-        for move in possible_moves:
-            old_file, old_rank = Board.coord2fr(*old_coord)
-
-            print("{} {} from {}{} to {}".format(
-                piece.color,
-                old_type,
-                old_file, old_rank,
-                move))
-
-        print()
-
-        print("Selected move:")
-        print("{} {} from {}{} to {}".format(
-            piece.color,
-            old_type,
-            old_file, old_rank,
-            local_move))
-
-        print('-'*24)
-        print()
-
-        self.rerun = False
         return True
+
+    def minimax_root(self, depth, game, is_max_player):
+        best_value = -9999
+        best_move = None
+
+        for move in game.get_all_moves(self.player.color):
+            if not self.simulate_move(game, move):
+                continue
+
+            value = self.minimax(depth-1, game, not is_max_player)
+            move.piece.undo()
+
+            #print(f"Value: {value}")
+            #print(f"Best value: {best_value}")
+            if value >= best_value:
+                best_value = value
+                best_move = move
+
+        print(f"Best value: {best_value}")
+
+        return best_move
+
+    def minimax(self, depth, game, is_max_player):
+        if depth == 0:
+            return self.board.value
+
+        if is_max_player:
+            best_value = -9999
+
+            for move in game.get_all_moves(self.player.color):
+                if not self.simulate_move(game, move):
+                    continue
+
+                best_value = max(best_value, self.minimax(depth-1, game, not is_max_player))
+                move.piece.undo()
+        else:
+            best_value = 9999
+
+            for move in game.get_all_moves(self.player.color):
+                if not self.simulate_move(game, move):
+                    continue
+
+                best_value = min(best_value, self.minimax(depth-1, game, not is_max_player))
+                move.piece.undo()
+
+        return best_value
 
     def update_last_move(self):
         #move = self.game.moves[-1]
@@ -142,7 +177,6 @@ class AI(BaseAI):
 
         #piece.move(Move(piece, to_x, to_y, move.promotion))
         self.board = Board(self.game.fen)
-        self.local_player = Player(self.board, self.player.color)
 
     def print_current_board(self):
         """Prints the current board using pretty ASCII art

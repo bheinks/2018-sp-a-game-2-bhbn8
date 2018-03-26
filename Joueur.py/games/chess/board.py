@@ -1,5 +1,6 @@
 from string import ascii_lowercase
 from re import sub
+from copy import copy
 
 
 class Board:
@@ -18,6 +19,21 @@ class Board:
         'k': "King"
     }
 
+    PIECE_VALUE_MAP = {
+        'p': -1,
+        'n': -3,
+        'b': -3,
+        'r': -5,
+        'q': -9,
+        'k': -999,
+        'P': 1,
+        'N': 3,
+        'B': 3,
+        'R': 5,
+        'Q': 9,
+        'K': 999
+    }
+
     def __init__(self, fen=DEFAULT_FEN):
         """Initializes a board instance.
 
@@ -32,7 +48,7 @@ class Board:
         fen = fen.split()
 
         # represent our board as a 2d list, pieces as a dictionary
-        self._board, self.pieces = self.fen2board(fen[0])
+        self._board, self.pieces, self.value = self.fen2board(fen[0])
 
         # other FEN fields
         self.turn = fen[1]
@@ -40,6 +56,29 @@ class Board:
         self.en_passant = fen[3]
         self.halfmove_clock = int(fen[4])
         self.fullmove_counter = int(fen[5])
+        self.history = []
+
+    def copy(self):
+        """Generates a new board state.
+
+        Returns:
+            Board: The new state.
+        """
+
+        new = copy(self)
+        new._board = [row[:] for row in self._board]
+        new.pieces = {k:v for k,v in self.pieces.items()}
+        new.history = self.history[:]
+
+        return new
+
+        #return Board(self.board2fen())
+
+    def snapshot(self):
+        self.history.append(self.copy())
+
+    def undo(self):
+        self.__dict__ = self.history.pop().__dict__
 
     def get_piece(self, x, y):
         """Retrieves a piece from the board.
@@ -69,6 +108,8 @@ class Board:
             piece: The piece that we're setting the location of.
         """
 
+        print(f"Moving {piece} from {piece.x}, {piece.y} to {x}, {y}")
+
         # remove our piece from original position
         self._board[piece.y][piece.x] = None
 
@@ -83,7 +124,7 @@ class Board:
         piece.x, piece.y = x, y
 
     def remove_piece(self, x, y):
-        """Removes a piece from the board.
+        """Removes a piece from the board. Indicates capture.
 
         Args:
             x: The x coordinate.
@@ -93,8 +134,17 @@ class Board:
 
         piece = self.get_piece(x, y)
 
+        # update board value
+        self.value -= Board.PIECE_VALUE_MAP[str(piece)]
+
         # remove from pieces
-        del self.pieces[piece.color][piece.id]
+        try:
+            print(f"--------------------Removing piece with id {piece.id}")
+            del self.pieces[piece.color][piece.id]
+        except:
+            print(f"White pieces: {self.pieces['w']}")
+            print(f"Black pieces: {self.pieces['b']}")
+            raise
 
         # remove from board
         self._board[y][x] = None
@@ -130,7 +180,9 @@ class Board:
         """
 
         board = []
-        pieces = {"White": {}, "Black": {}}
+        pieces = {"w": {}, "b": {}}
+        value = 0
+
         fen = Board._expand_fen(fen)
         fen_split = fen.split('/')
         default_split = Board._expand_fen(Board.DEFAULT_FEN.split()[0]).split('/')
@@ -149,14 +201,14 @@ class Board:
                     rank.append(None)
                 else:
                     if piece.isupper():
-                        color = "White"
-                        enemy_color = "Black"
+                        color, enemy_color = 'w', 'b'
                     else:
-                        color = "Black"
-                        enemy_color = "White"
+                        color, enemy_color = "b", "w"
 
                     if piece != default_split[y][x]:
                         has_moved = True
+
+                    value += Board.PIECE_VALUE_MAP[piece]
 
                     piece = Piece(self, id, x, y,
                         Board.FEN_PIECE_MAP[piece.lower()],
@@ -164,11 +216,12 @@ class Board:
 
                     rank.append(piece)
                     pieces[color][id] = piece
+
                     id += 1
 
             board.append(rank)
 
-        return board, pieces
+        return board, pieces, value
 
     @staticmethod
     def _expand_fen(fen):
@@ -211,14 +264,11 @@ class Board:
             self.halfmove_clock,
             self.fullmove_counter)
 
-    def get_new_state(self):
-        """Generates a new board state.
+    def get_all_moves(self, color):
+        return [m for p in self.pieces[color.lower()[0]].values() for m in p.get_moves()]
 
-        Returns:
-            Board: The new state.
-        """
-
-        return Board(self.board2fen())
+    def get_pieces(self):
+        return [p for p in self.pieces[self.turn].values()]
 
     @staticmethod
     def coord2fr(x, y):
@@ -280,6 +330,17 @@ class Piece:
         self.color = color
         self.enemy_color = enemy_color
         self.has_moved = has_moved
+        self.history = []
+    
+    def snapshot(self):
+        self.history.append((self.x, self.y, self.has_moved))
+        self.board.snapshot()
+
+    def undo(self):
+        print(len(self.history))
+        print(len(self.board.history))
+        self.x, self.y, self.has_moved = self.history.pop()
+        self.board.undo()
 
     def __str__(self):
         if self.type == "Knight":
@@ -287,7 +348,7 @@ class Piece:
         else:
             code = self.type[0]
 
-        return code.lower() if self.color == "Black" else code.upper()
+        return code.lower() if self.color == "b" else code.upper()
 
     def __repr__(self):
         return str(self)
@@ -382,7 +443,7 @@ class Piece:
         board = self.board
         x, y = self.x, self.y
 
-        if self.color == "White":
+        if self.color == "w":
             # check movement north 1
             move = x, y-1
 
@@ -569,7 +630,7 @@ class Piece:
 
         # check castling
         if not self.has_moved:
-            if self.color == "White":
+            if self.color == "w":
                 # check white kingside castle
                 if 'K' in self.board.castling and self._check_castle(6, 7, 5, 1):
                     legal_moves.append(Move(self, 6, self.y, castling=(7, 5)))
@@ -622,6 +683,8 @@ class Piece:
         return PIECE_MOVE_MAP[self.type]()
 
     def move(self, move):
+        self.snapshot()
+
         if not self.has_moved:
             if move.piece.type == "King":
                 # remove white castling permissions
@@ -657,9 +720,16 @@ class Piece:
                         self.board.castling = self.board.castling.replace('k', '')
 
         if move.piece.type == "Pawn":
+            offset = 1 if self.color == "w" else -1
+
             if self.board.en_passant == ''.join(Board.coord2fr(move.x, move.y)):
                 x, y = Board.fr2coord(*list(self.board.en_passant))
-                self.board.remove_piece(x, y + (1 if self.color == "White" else -1))
+                self.board.remove_piece(x, y + offset)
+
+            if move.promotion:
+                self.type = move.promotion
+                # update player value, subtract 1 as we're replacing a pawn
+                self.board.value += Board.PIECE_VALUE_MAP[str(self)] - offset
 
             self.board.halfmove_clock = 0
         else:
@@ -668,28 +738,15 @@ class Piece:
         self.board.set_piece(move.x, move.y, self)
         self.has_moved = True
 
-        if move.promotion:
-            self.type = move.promotion
-
         self.board.en_passant = move.en_passant or '-'
         self.board.castling = self.board.castling or '-'
-        self.board.turn = self.enemy_color[0].lower()
+        self.board.turn = self.enemy_color
 
-        if move.piece.color == "Black":
+        if move.piece.color == "b":
             self.board.fullmove_counter += 1
 
     def is_enemy(self, other):
         return self.color != other.color
-
-
-class Player:
-    def __init__(self, board, color):
-        self.board = board
-        self.color = color
-        self.pieces = board.pieces[color]
-
-    def get_all_moves(self):
-        return [m for p in self.pieces.values() for m in p.get_moves()]
 
 
 class Move:
