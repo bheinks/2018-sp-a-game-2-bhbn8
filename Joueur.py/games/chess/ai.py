@@ -35,6 +35,9 @@ class AI(BaseAI):
         # represents whether or not we want minimax to return high or low
         self.color_code = 1 if self.player.color == "White" else -1
 
+        # depth limit
+        self.depth_limit = int(self.get_setting("depth_limit"))
+
         # <<-- /Creer-Merge: start -->>
 
     def game_updated(self):
@@ -65,7 +68,7 @@ class AI(BaseAI):
         if len(self.game.moves) > 0:
             self.update_last_move()
 
-        move = self.minimax_root(3, self.chess, True)
+        move = self.minimax_root(self.depth_limit, self.chess, True)
         self.chess.move(move)
         
         print("Best move: {}".format(move))
