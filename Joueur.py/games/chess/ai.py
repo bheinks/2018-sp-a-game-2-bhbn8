@@ -1,11 +1,12 @@
 # This is where you build your AI for the Chess game.
 
-from random import choice
+import random
 from time import sleep
+from pprint import pprint
 
 # local imports
 from joueur.base_ai import BaseAI
-from games.chess.board import Board
+from games.chess.engine import Chess
 
 # <<-- Creer-Merge: imports -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
 # you can add additional import(s) here
@@ -30,7 +31,7 @@ class AI(BaseAI):
         # <<-- Creer-Merge: start -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
         
         # our local board representation
-        self.board = Board(self.game.fen)
+        self.chess = Chess(self.game.fen)
 
         # represents whether or not we want minimax to return high or low
         self.color_code = 1 if self.player.color == "White" else -1
@@ -65,118 +66,76 @@ class AI(BaseAI):
         if len(self.game.moves) > 0:
             self.update_last_move()
 
-        move = self.minimax_root(3, self.board, True)
-        piece = move.piece
-        promotion_type = move.promotion
-        old_coord = piece.x, piece.y
-
-        print(f"Moving {piece} from {old_coord} to {move.x}, {move.y}")
-
-        move.piece.move(move)
-
-        for p in self.player.pieces:
-            if Board.fr2coord(p.file, p.rank) == old_coord:
-                p.move(*Board.coord2fr(move.x, move.y), promotion_type)
-                break
-
-        print("Local board:")
-        self.board.print()
+        move = self.minimax_root(3, self.chess, True)
+        self.chess.move(move)
+        
+        print("Best move: {}".format(move))
+        self.chess.print()
         print()
-        print("Remote board:")
-        self.print_current_board()
-        print(f"I am {self.player.color}")
+        
+        promotion = '' if not move.promotion else Chess.PIECE_MAP[self.chess.board[move.m_to].type]
 
-        return True
+        for piece in self.player.pieces:
+            if ''.join((piece.file, str(piece.rank))) == Chess.get_san(move.m_from):
+                piece.move(*tuple(Chess.get_san(move.m_to)), promotionType=promotion)
+
+        return True  # to signify we are done with our turn.
 
         # <<-- /Creer-Merge: runTurn -->>
 
     # <<-- Creer-Merge: functions -->> - Code you add between this comment and the end comment will be preserved between Creer re-runs.
 
-    def simulate_move(self, board, local_move):
-        piece = local_move.piece
-        #promotion_type = local_move.promotion
-        #x, y = local_move.x, local_move.y
-
-        # cannot castle when in check
-        if piece.type == "King" and local_move.castling and piece.in_check():
-            return False
-
-        piece.move(local_move)
-
-        # discard state if we end up in check
-        for p in board.get_pieces():
-            if p.type == "King" and p.in_check():
-                piece.undo()
-                return False
-
-        # otherwise it's a valid move. find remote piece and move
-        #for p in self.player.pieces:
-        #    if Board.fr2coord(p.file, p.rank) == old_coord:
-        #        p.move(*Board.coord2fr(x, y), promotion_type)
-        #        break
-
-        #print("Remote board:")
-        #self.print_current_board()
-        #print()
-        #print("Board value: {}".format(self.board.value))
-        #print()
-
-        return True
+    def update_last_move(self):
+        move = self.game.moves[-1]
+        fr_from = move.from_file + str(move.from_rank)
+        fr_to = move.to_file + str(move.to_rank)
+        self.chess.move(self.chess.get_enemy_move(fr_from, fr_to))
 
     def minimax_root(self, depth, game, is_max_player):
+        moves = game.generate_moves()
+        random.shuffle(moves)
         best_value = -9999
         best_move = None
 
-        for move in game.get_all_moves(self.player.color):
-            if not self.simulate_move(game, move):
-                continue
-
+        for move in moves:
+            game.move(move)
             value = self.minimax(depth-1, game, not is_max_player)
-            move.piece.undo()
+            game.undo()
 
-            #print(f"Value: {value}")
-            #print(f"Best value: {best_value}")
             if value >= best_value:
                 best_value = value
                 best_move = move
 
-        print(f"Best value: {best_value}")
-
         return best_move
 
     def minimax(self, depth, game, is_max_player):
-        if depth == 0:
-            return self.board.value
+        if not depth:
+            return game.value * self.color_code
+
+        if game.in_draw():
+            return 0
+
+        moves = game.generate_moves()
+        random.shuffle(moves)
 
         if is_max_player:
             best_value = -9999
 
-            for move in game.get_all_moves(self.player.color):
-                if not self.simulate_move(game, move):
-                    continue
-
+            for move in moves:
+                game.move(move)
                 best_value = max(best_value, self.minimax(depth-1, game, not is_max_player))
-                move.piece.undo()
+                game.undo()
+
+            return best_value
         else:
             best_value = 9999
 
-            for move in game.get_all_moves(self.player.color):
-                if not self.simulate_move(game, move):
-                    continue
-
+            for move in moves:
+                game.move(move)
                 best_value = min(best_value, self.minimax(depth-1, game, not is_max_player))
-                move.piece.undo()
+                game.undo()
 
-        return best_value
-
-    def update_last_move(self):
-        #move = self.game.moves[-1]
-        #from_x, from_y = Board.fr2coord(move.from_file, move.from_rank)
-        #to_x, to_y = Board.fr2coord(move.to_file, move.to_rank)
-        #piece = self.board.get_piece(from_x, from_y)
-
-        #piece.move(Move(piece, to_x, to_y, move.promotion))
-        self.board = Board(self.game.fen)
+            return best_value
 
     def print_current_board(self):
         """Prints the current board using pretty ASCII art

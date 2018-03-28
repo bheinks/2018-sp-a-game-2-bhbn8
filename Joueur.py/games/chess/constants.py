@@ -178,8 +178,8 @@ class SQUARES(Enum):
     h1 = 119
 
 ROOKS = {
-    'w': [{"square": SQUARES.a1, "flag": Bits.QSIDE_CASTLE},
-          {"square": SQUARES.h1, "flag": Bits.KSIDE_CASTLE}],
-    'b': [{"square": SQUARES.a8, "flag": Bits.QSIDE_CASTLE},
-          {"square": SQUARES.h8, "flag": Bits.KSIDE_CASTLE}]
+    'w': [{"square": SQUARES.a1.value, "flag": Bits.QSIDE_CASTLE.value},
+          {"square": SQUARES.h1.value, "flag": Bits.KSIDE_CASTLE.value}],
+    'b': [{"square": SQUARES.a8.value, "flag": Bits.QSIDE_CASTLE.value},
+          {"square": SQUARES.h8.value, "flag": Bits.KSIDE_CASTLE.value}]
 }
