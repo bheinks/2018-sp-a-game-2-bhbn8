@@ -2,7 +2,6 @@
 
 import random
 from time import sleep
-from pprint import pprint
 
 # local imports
 from joueur.base_ai import BaseAI

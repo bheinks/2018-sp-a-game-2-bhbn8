@@ -621,7 +621,11 @@ class Move:
         return self.m_from == other.m_from and self.m_to == other.m_to
 
     def __str__(self):
-        return f"{self.color} {self.piece} from {Chess.get_san(self.m_from)} to {Chess.get_san(self.m_to)}"
+        return "{} {} from {} to {}".format(
+            self.color,
+            self.piece,
+            Chess.get_san(self.m_from),
+            Chess.get_san(self.m_to))
 
     def __repr__(self):
         return self.__str__()
